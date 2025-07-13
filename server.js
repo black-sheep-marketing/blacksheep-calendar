@@ -55,12 +55,14 @@ const transporter = nodemailer.createTransport({
 // Get availability for a specific month
 app.get('/api/availability', async (req, res) => {
     try {
-        const { year, month } = req.query;
+        const { year, month, timezone } = req.query;
         const startDate = new Date(year, month, 1);
         const endDate = new Date(year, parseInt(month) + 1, 0);
         
-        // Get existing events from Google Calendar
         console.log(`Fetching calendar events for ${CONFIG.CALENDAR_ID} from ${startDate.toISOString()} to ${endDate.toISOString()}`);
+        console.log(`Client timezone: ${timezone || 'not provided'}`);
+        
+        // Get existing events from Google Calendar
         const response = await calendar.events.list({
             calendarId: CONFIG.CALENDAR_ID,
             timeMin: startDate.toISOString(),
@@ -85,9 +87,12 @@ app.get('/api/availability', async (req, res) => {
 
             // Handle both timed events and all-day events
             if (event.start && event.start.dateTime) {
-                // Timed event
+                // Timed event - convert to client timezone
                 eventStart = new Date(event.start.dateTime);
                 eventEnd = new Date(event.end.dateTime);
+                
+                console.log(`Event "${event.summary}" original time: ${eventStart.toISOString()}`);
+                
             } else if (event.start && event.start.date) {
                 // All-day event
                 eventStart = new Date(event.start.date + 'T00:00:00');
@@ -107,11 +112,23 @@ app.get('/api/availability', async (req, res) => {
             }
 
             // For timed events, block the specific time slots
-            const eventDuration = eventEnd.getTime() - eventStart.getTime();
+            const clientTimezone = timezone || 'America/Phoenix';
+            
+            console.log(`Converting event "${event.summary}" to ${clientTimezone}`);
+            console.log(`Original event time: ${eventStart.toISOString()}`);
+            
+            // Convert the event time to the client's timezone for slot key generation
+            // We'll create a new date that represents the local time in the client's timezone
+            const eventDateInClientTZ = new Date(eventStart.toLocaleString("en-US", {timeZone: clientTimezone}));
+            const eventEndInClientTZ = new Date(eventEnd.toLocaleString("en-US", {timeZone: clientTimezone}));
+            
+            console.log(`Event time in ${clientTimezone}: ${eventDateInClientTZ.toString()}`);
+            
+            const eventDuration = eventEndInClientTZ.getTime() - eventDateInClientTZ.getTime();
             const slotsToBlock = Math.ceil(eventDuration / (30 * 60 * 1000)); // 30-minute slots
 
             for (let i = 0; i < slotsToBlock; i++) {
-                const slotTime = new Date(eventStart.getTime() + (i * 30 * 60 * 1000));
+                const slotTime = new Date(eventDateInClientTZ.getTime() + (i * 30 * 60 * 1000));
                 const date = slotTime.toDateString();
                 const hour = slotTime.getHours();
                 const minute = slotTime.getMinutes();
@@ -120,18 +137,23 @@ app.get('/api/availability', async (req, res) => {
                 const roundedMinute = minute < 30 ? 0 : 30;
                 const slotKey = `${date}_${hour}_${roundedMinute}`;
                 bookedSlots.add(slotKey);
-                console.log('Blocking timed slot:', slotKey);
+                console.log(`Blocking slot: ${slotKey} for event "${event.summary}" at ${hour}:${String(roundedMinute).padStart(2, '0')}`);
             }
             
             // Add cooldown slot
-            const cooldownTime = new Date(eventEnd.getTime() + (CONFIG.COOLDOWN_MINUTES * 60 * 1000));
+            const cooldownTime = new Date(eventEndInClientTZ.getTime() + (CONFIG.COOLDOWN_MINUTES * 60 * 1000));
             const cooldownDate = cooldownTime.toDateString();
             const cooldownHour = cooldownTime.getHours();
             const cooldownMinute = cooldownTime.getMinutes() < 30 ? 0 : 30;
             const cooldownSlotKey = `${cooldownDate}_${cooldownHour}_${cooldownMinute}`;
             bookedSlots.add(cooldownSlotKey);
-            console.log('Adding cooldown slot:', cooldownSlotKey);
+            console.log(`Adding cooldown slot: ${cooldownSlotKey}`);
         });
+
+        console.log(`Total booked slots generated: ${bookedSlots.size}`);
+        if (bookedSlots.size > 0) {
+            console.log('Sample booked slots:', Array.from(bookedSlots).slice(0, 10));
+        }
 
         res.json({
             success: true,
