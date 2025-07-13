@@ -146,7 +146,7 @@ app.get('/api/availability', async (req, res) => {
 // Book an appointment
 app.post('/api/book', async (req, res) => {
     try {
-        const { name, email, phone, date, time, dateDisplay, timeDisplay } = req.body;
+        const { name, email, phone, date, time, dateDisplay, timeDisplay, timezone } = req.body;
         
         // Validate required fields
         if (!name || !email || !phone || !date || !time) {
@@ -168,8 +168,11 @@ app.post('/api/book', async (req, res) => {
             });
         }
 
-        // Check if slot is already booked
-        const slotKey = `${appointmentTime.toDateString()}_${appointmentTime.getHours()}_${appointmentTime.getMinutes()}`;
+        // Check if slot is already booked using the client's timezone
+        const clientTimezone = timezone || 'America/Phoenix';
+        const appointmentTimeInClientTZ = new Date(appointmentTime.toLocaleString("en-US", {timeZone: clientTimezone}));
+        const slotKey = `${appointmentTimeInClientTZ.toDateString()}_${appointmentTimeInClientTZ.getHours()}_${appointmentTimeInClientTZ.getMinutes()}`;
+        
         const existingBooking = bookings.find(booking => booking.slotKey === slotKey);
         
         if (existingBooking) {
@@ -192,14 +195,15 @@ app.post('/api/book', async (req, res) => {
                 Phone: ${phone}
                 
                 Booked via calendar system
+                Client timezone: ${clientTimezone}
             `,
             start: {
                 dateTime: appointmentTime.toISOString(),
-                timeZone: 'America/Phoenix' // Adjust to your timezone
+                timeZone: clientTimezone
             },
             end: {
                 dateTime: endTime.toISOString(),
-                timeZone: 'America/Phoenix'
+                timeZone: clientTimezone
             },
             attendees: [
                 { email: email }
@@ -212,6 +216,13 @@ app.post('/api/book', async (req, res) => {
                 ]
             }
         };
+
+        console.log('Creating calendar event:', {
+            summary: event.summary,
+            start: event.start,
+            end: event.end,
+            timezone: clientTimezone
+        });
 
         const calendarResponse = await calendar.events.insert({
             calendarId: CONFIG.CALENDAR_ID,
@@ -229,6 +240,7 @@ app.post('/api/book', async (req, res) => {
             dateDisplay,
             timeDisplay,
             slotKey,
+            timezone: clientTimezone,
             googleEventId: calendarResponse.data.id,
             createdAt: new Date()
         };
@@ -248,6 +260,7 @@ app.post('/api/book', async (req, res) => {
                 id: booking.id,
                 date: dateDisplay,
                 time: timeDisplay,
+                timezone: clientTimezone,
                 googleEventId: calendarResponse.data.id
             }
         });
