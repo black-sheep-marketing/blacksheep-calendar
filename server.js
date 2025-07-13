@@ -38,11 +38,12 @@ const CONFIG = {
     WORKING_HOURS: { start: 9, end: 17 },
     WORKING_DAYS: [1, 2, 3, 4, 5], // Monday to Friday
     MIN_BOOKING_HOURS: 1,
-    COOLDOWN_MINUTES: 30
+    WARMUP_MINUTES: 30,    // Buffer before meeting
+    COOLDOWN_MINUTES: 30   // Buffer after meeting
 };
 
 // Email transporter
-const transporter = nodemailer.createTransport({
+const transporter = nodemailer.createTransporter({
     service: 'gmail',
     auth: {
         user: process.env.EMAIL_USER,
@@ -118,15 +119,37 @@ app.get('/api/availability', async (req, res) => {
             console.log(`Original event time: ${eventStart.toISOString()}`);
             
             // Convert the event time to the client's timezone for slot key generation
-            // We'll create a new date that represents the local time in the client's timezone
             const eventDateInClientTZ = new Date(eventStart.toLocaleString("en-US", {timeZone: clientTimezone}));
             const eventEndInClientTZ = new Date(eventEnd.toLocaleString("en-US", {timeZone: clientTimezone}));
             
-            console.log(`Event time in ${clientTimezone}: ${eventDateInClientTZ.toString()}`);
+            console.log(`Event "${event.summary}" in ${clientTimezone}:`);
+            console.log(`  Meeting: ${eventDateInClientTZ.toLocaleTimeString('en-US', {hour: '2-digit', minute: '2-digit', hour12: true})} - ${eventEndInClientTZ.toLocaleTimeString('en-US', {hour: '2-digit', minute: '2-digit', hour12: true})}`);
+            
+            // Add warm-up slots - block time before meeting starts
+            const warmupDurationMs = CONFIG.WARMUP_MINUTES * 60 * 1000;
+            const warmupSlotsNeeded = Math.ceil(warmupDurationMs / (30 * 60 * 1000)); // Number of 30-min slots needed
+            
+            console.log(`  Adding ${warmupSlotsNeeded} warm-up slots (${CONFIG.WARMUP_MINUTES} min before meeting)`);
+            
+            for (let i = warmupSlotsNeeded - 1; i >= 0; i--) {
+                const warmupSlotTime = new Date(eventDateInClientTZ.getTime() - ((i + 1) * 30 * 60 * 1000));
+                const warmupDate = warmupSlotTime.toDateString();
+                const warmupHour = warmupSlotTime.getHours();
+                const warmupMinute = warmupSlotTime.getMinutes();
+                
+                // Round to nearest 30-minute slot
+                const roundedWarmupMinute = warmupMinute < 30 ? 0 : 30;
+                const warmupSlotKey = `${warmupDate}_${warmupHour}_${roundedWarmupMinute}`;
+                bookedSlots.add(warmupSlotKey);
+                console.log(`    Warm-up slot: ${warmupSlotKey} (${warmupHour}:${String(roundedWarmupMinute).padStart(2, '0')})`);
+            }
             
             const eventDuration = eventEndInClientTZ.getTime() - eventDateInClientTZ.getTime();
             const slotsToBlock = Math.ceil(eventDuration / (30 * 60 * 1000)); // 30-minute slots
 
+            console.log(`  Adding ${slotsToBlock} meeting slots`);
+            
+            // Block the meeting time slots
             for (let i = 0; i < slotsToBlock; i++) {
                 const slotTime = new Date(eventDateInClientTZ.getTime() + (i * 30 * 60 * 1000));
                 const date = slotTime.toDateString();
@@ -137,17 +160,27 @@ app.get('/api/availability', async (req, res) => {
                 const roundedMinute = minute < 30 ? 0 : 30;
                 const slotKey = `${date}_${hour}_${roundedMinute}`;
                 bookedSlots.add(slotKey);
-                console.log(`Blocking slot: ${slotKey} for event "${event.summary}" at ${hour}:${String(roundedMinute).padStart(2, '0')}`);
+                console.log(`    Meeting slot: ${slotKey} (${hour}:${String(roundedMinute).padStart(2, '0')})`);
             }
             
-            // Add cooldown slot
-            const cooldownTime = new Date(eventEndInClientTZ.getTime() + (CONFIG.COOLDOWN_MINUTES * 60 * 1000));
-            const cooldownDate = cooldownTime.toDateString();
-            const cooldownHour = cooldownTime.getHours();
-            const cooldownMinute = cooldownTime.getMinutes() < 30 ? 0 : 30;
-            const cooldownSlotKey = `${cooldownDate}_${cooldownHour}_${cooldownMinute}`;
-            bookedSlots.add(cooldownSlotKey);
-            console.log(`Adding cooldown slot: ${cooldownSlotKey}`);
+            // Add cooldown slots - start immediately when meeting ends
+            const cooldownDurationMs = CONFIG.COOLDOWN_MINUTES * 60 * 1000;
+            const cooldownSlotsNeeded = Math.ceil(cooldownDurationMs / (30 * 60 * 1000)); // Number of 30-min slots needed
+            
+            console.log(`  Adding ${cooldownSlotsNeeded} cooldown slots (${CONFIG.COOLDOWN_MINUTES} min after meeting)`);
+            
+            for (let i = 0; i < cooldownSlotsNeeded; i++) {
+                const cooldownSlotTime = new Date(eventEndInClientTZ.getTime() + (i * 30 * 60 * 1000));
+                const cooldownDate = cooldownSlotTime.toDateString();
+                const cooldownHour = cooldownSlotTime.getHours();
+                const cooldownMinute = cooldownSlotTime.getMinutes();
+                
+                // Round to nearest 30-minute slot
+                const roundedCooldownMinute = cooldownMinute < 30 ? 0 : 30;
+                const cooldownSlotKey = `${cooldownDate}_${cooldownHour}_${roundedCooldownMinute}`;
+                bookedSlots.add(cooldownSlotKey);
+                console.log(`    Cooldown slot: ${cooldownSlotKey} (${cooldownHour}:${String(roundedCooldownMinute).padStart(2, '0')})`);
+            }
         });
 
         console.log(`Total booked slots generated: ${bookedSlots.size}`);
