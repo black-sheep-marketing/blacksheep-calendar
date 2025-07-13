@@ -43,13 +43,94 @@ const CONFIG = {
 };
 
 // Email transporter
-const transporter = nodemailer.createTransport({
+const transporter = nodemailer.createTransporter({
     service: 'gmail',
     auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_APP_PASSWORD
     }
 });
+
+// Helper function to format qualification data for calendar description
+function formatQualificationData(qualificationData) {
+    const fieldLabels = {
+        website: 'Website/Store URL',
+        role: 'Position/Role',
+        channels: 'Current Advertising Channels',
+        revenue_goal: 'Monthly Revenue Goal (6-12 months)',
+        ad_management: 'Who Manages Ad Accounts',
+        current_revenue: 'Current Monthly DTC Revenue',
+        funding: 'Funding Status',
+        ad_spend: 'Ad Spend (Past 30 Days)',
+        problems: 'Current Problems/Challenges'
+    };
+
+    const valueLabels = {
+        // Role values
+        'brand-owner': 'Brand Owner/Founder/CEO',
+        'in-house-marketer': 'In-House Brand Marketer/Operator',
+        'agency-consultant': 'Agency/Consultant/Investor',
+        'other': 'Other',
+        
+        // Channel values
+        'meta': 'Meta (Facebook and/or Instagram)',
+        'google': 'Google',
+        'tiktok': 'TikTok',
+        'combination': 'Combination of multiple channels',
+        
+        // Revenue goal values
+        '20k-50k': '$20,000-$50,000/month',
+        '51k-200k': '$51,000-$200,000/month',
+        '201k-500k': '$201,000-$500,000/month',
+        '501k-1m': '$501,000-$1,000,000/month',
+        '1m+': '$1,000,000+/month',
+        
+        // Ad management values
+        'in-house': 'We manage our paid advertising in-house',
+        'freelancer': 'We work with a freelancer that runs all of our paid advertising',
+        'agency': 'We work with an agency that runs all of our paid advertising',
+        
+        // Current revenue values
+        'pre-revenue': 'Pre-revenue',
+        '1-10k': '$1-$10K/month',
+        '11-50k': '$11-$50k/month',
+        '51-100k': '$51-$100k/month',
+        '101-250k': '$101-$250K/month',
+        '250k-1m': '$250k-$1M/month',
+        '1m+': '$1M/month+',
+        
+        // Funding values
+        'self-funded': 'Self-Funded',
+        'seeking-investment': 'Currently Seeking External Investment',
+        'secured-funding': 'Secured External Funding (VC, Private Equity, Angel Investors)',
+        
+        // Ad spend values
+        '0': '$0',
+        '1000-10000': '$1,000-$10,000',
+        '11000-30000': '$11,000-$30,000',
+        '31000-100000': '$31,000-$100,000',
+        '101000-250000': '$101,000-$250,000',
+        '251000+': '$251,000+',
+        
+        // Problems values
+        'losing-money': 'Our ads are losing money and we can\'t hit our breakeven ROAS, PLEASE HELP',
+        'not-hitting-target': 'We are profitable but we\'re not hitting our target ROAS and we just can\'t seem to get our existing advertising campaigns to convert better',
+        'doing-well': 'We\'re doing well, but we want to be the best and we\'d love to optimize our advertising even further to maximize profitability',
+        'getting-started': 'We\'re just getting started with paid ads and we\'re already overwhelmed by all of the conflicting advice from agencies and consultants'
+    };
+
+    let formattedData = '\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n📋 PROSPECT QUALIFICATION DETAILS\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n';
+
+    Object.entries(qualificationData).forEach(([key, value]) => {
+        if (value && fieldLabels[key]) {
+            const label = fieldLabels[key];
+            const displayValue = valueLabels[value] || value;
+            formattedData += `🔹 ${label}:\n   ${displayValue}\n\n`;
+        }
+    });
+
+    return formattedData;
+}
 
 // API Routes
 
@@ -201,7 +282,7 @@ app.get('/api/availability', async (req, res) => {
 // Book an appointment
 app.post('/api/book', async (req, res) => {
     try {
-        const { name, email, phone, date, time, dateDisplay, timeDisplay, timezone } = req.body;
+        const { name, email, phone, date, time, dateDisplay, timeDisplay, timezone, qualificationData } = req.body;
         
         // Validate required fields
         if (!name || !email || !phone || !date || !time) {
@@ -237,20 +318,46 @@ app.post('/api/book', async (req, res) => {
             });
         }
 
-        // Create Google Calendar event
+        // Format qualification data for calendar description
+        const qualificationDetails = qualificationData ? formatQualificationData(qualificationData) : '';
+
+        // Create Google Calendar event with Google Meet link
         const endTime = new Date(appointmentTime.getTime() + (30 * 60 * 1000)); // 30 minutes
         
         const event = {
-            summary: `Call with ${name}`,
+            summary: `Ecom Growth Discovery Call - ${name}`,
             description: `
-                Scheduled call booking
-                
-                Name: ${name}
-                Email: ${email}
-                Phone: ${phone}
-                
-                Booked via calendar system
-                Client timezone: ${clientTimezone}
+🎯 ECOM GROWTH PARTNERSHIP DISCOVERY CALL
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+👤 CONTACT INFORMATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📧 Email: ${email}
+📞 Phone: ${phone}
+🌍 Timezone: ${clientTimezone}
+📅 Booked via: Calendar System
+${qualificationDetails}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎥 MEETING DETAILS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📱 Google Meet link will be automatically added to this event
+⏰ Duration: 30 minutes
+🔔 You'll receive reminder notifications
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📝 CALL NOTES SECTION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[Add your call notes here]
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚡ NEXT STEPS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[Add next steps here]
             `,
             start: {
                 dateTime: appointmentTime.toISOString(),
@@ -263,6 +370,14 @@ app.post('/api/book', async (req, res) => {
             attendees: [
                 { email: email }
             ],
+            conferenceData: {
+                createRequest: {
+                    requestId: `meet-${Date.now()}`, // Unique ID for the request
+                    conferenceSolutionKey: {
+                        type: 'hangoutsMeet'
+                    }
+                }
+            },
             reminders: {
                 useDefault: false,
                 overrides: [
@@ -272,20 +387,23 @@ app.post('/api/book', async (req, res) => {
             }
         };
 
-        console.log('Creating calendar event:', {
+        console.log('Creating calendar event with qualification data and Google Meet:', {
             summary: event.summary,
             start: event.start,
             end: event.end,
-            timezone: clientTimezone
+            timezone: clientTimezone,
+            hasQualificationData: !!qualificationData,
+            meetingRequested: true
         });
 
         const calendarResponse = await calendar.events.insert({
             calendarId: CONFIG.CALENDAR_ID,
             resource: event,
+            conferenceDataVersion: 1, // Required for Google Meet integration
             sendUpdates: 'all'
         });
 
-        // Store booking locally
+        // Store booking locally with qualification data
         const booking = {
             id: Date.now().toString(),
             name,
@@ -297,15 +415,17 @@ app.post('/api/book', async (req, res) => {
             slotKey,
             timezone: clientTimezone,
             googleEventId: calendarResponse.data.id,
+            meetLink: calendarResponse.data.hangoutLink || calendarResponse.data.conferenceData?.entryPoints?.[0]?.uri,
+            qualificationData: qualificationData || {},
             createdAt: new Date()
         };
         
         bookings.push(booking);
 
-        // Tag customer in Shopify
-        await tagShopifyCustomer(email, name, phone);
+        // Tag customer in Shopify with qualification data
+        await tagShopifyCustomer(email, name, phone, qualificationData);
 
-        // Send confirmation email
+        // Send confirmation email with qualification summary
         await sendConfirmationEmail(booking);
 
         res.json({
@@ -329,8 +449,8 @@ app.post('/api/book', async (req, res) => {
     }
 });
 
-// Tag customer in Shopify
-async function tagShopifyCustomer(email, name, phone) {
+// Tag customer in Shopify with qualification data
+async function tagShopifyCustomer(email, name, phone, qualificationData = {}) {
     try {
         // First, search for existing customer
         const searchResponse = await axios.get(
@@ -345,53 +465,104 @@ async function tagShopifyCustomer(email, name, phone) {
 
         let customer;
         
+        // Create tags based on qualification data
+        const tags = ['call-booked'];
+        
+        if (qualificationData.current_revenue) {
+            tags.push(`revenue-${qualificationData.current_revenue}`);
+        }
+        if (qualificationData.revenue_goal) {
+            tags.push(`goal-${qualificationData.revenue_goal}`);
+        }
+        if (qualificationData.ad_spend) {
+            tags.push(`spend-${qualificationData.ad_spend}`);
+        }
+        if (qualificationData.problems) {
+            tags.push(`problem-${qualificationData.problems}`);
+        }
+        if (qualificationData.channels) {
+            tags.push(`channel-${qualificationData.channels}`);
+        }
+        
         if (searchResponse.data.customers && searchResponse.data.customers.length > 0) {
-            // Customer exists, update tags
+            // Customer exists, update tags and metafields
             customer = searchResponse.data.customers[0];
             const currentTags = customer.tags ? customer.tags.split(', ') : [];
             
-            if (!currentTags.includes('call-booked')) {
-                currentTags.push('call-booked');
-                
-                await axios.put(
-                    `${CONFIG.SHOPIFY_STORE_URL}/admin/api/2023-10/customers/${customer.id}.json`,
-                    {
-                        customer: {
-                            id: customer.id,
-                            tags: currentTags.join(', ')
-                        }
-                    },
-                    {
-                        headers: {
-                            'X-Shopify-Access-Token': CONFIG.SHOPIFY_ACCESS_TOKEN,
-                            'Content-Type': 'application/json'
-                        }
+            // Add new tags that don't already exist
+            tags.forEach(tag => {
+                if (!currentTags.includes(tag)) {
+                    currentTags.push(tag);
+                }
+            });
+            
+            const metafields = [];
+            
+            // Add qualification data as metafields
+            Object.entries(qualificationData).forEach(([key, value]) => {
+                if (value) {
+                    metafields.push({
+                        namespace: 'qualification',
+                        key: key,
+                        value: value,
+                        type: 'single_line_text_field'
+                    });
+                }
+            });
+            
+            await axios.put(
+                `${CONFIG.SHOPIFY_STORE_URL}/admin/api/2023-10/customers/${customer.id}.json`,
+                {
+                    customer: {
+                        id: customer.id,
+                        tags: currentTags.join(', '),
+                        metafields: metafields
                     }
-                );
-            }
+                },
+                {
+                    headers: {
+                        'X-Shopify-Access-Token': CONFIG.SHOPIFY_ACCESS_TOKEN,
+                        'Content-Type': 'application/json'
+                    }
+                }
+            );
         } else {
-            // Create new customer
+            // Create new customer with qualification data
+            const metafields = [
+                {
+                    namespace: 'booking',
+                    key: 'booking_time',
+                    value: new Date().toISOString(),
+                    type: 'date_time'
+                },
+                {
+                    namespace: 'booking',
+                    key: 'date',
+                    value: new Date().toISOString().split('T')[0],
+                    type: 'date'
+                }
+            ];
+            
+            // Add qualification data as metafields
+            Object.entries(qualificationData).forEach(([key, value]) => {
+                if (value) {
+                    metafields.push({
+                        namespace: 'qualification',
+                        key: key,
+                        value: value,
+                        type: 'single_line_text_field'
+                    });
+                }
+            });
+
             const newCustomer = {
                 customer: {
                     email: email,
                     first_name: name.split(' ')[0],
                     last_name: name.split(' ').slice(1).join(' '),
                     phone: phone,
-                    tags: 'call-booked',
-                    metafields: [
-                        {
-                            namespace: 'booking',
-                            key: 'booking_time',
-                            value: new Date().toISOString(),
-                            type: 'date_time'
-                        },
-                        {
-                            namespace: 'booking',
-                            key: 'date',
-                            value: new Date().toISOString().split('T')[0],
-                            type: 'date'
-                        }
-                    ]
+                    tags: tags.join(', '),
+                    metafields: metafields
                 }
             };
 
@@ -407,35 +578,60 @@ async function tagShopifyCustomer(email, name, phone) {
             );
         }
 
-        console.log('Successfully tagged customer in Shopify');
+        console.log('Successfully tagged customer in Shopify with qualification data');
     } catch (error) {
         console.error('Error tagging Shopify customer:', error.response?.data || error.message);
         // Don't throw error - booking should still succeed even if Shopify tagging fails
     }
 }
 
-// Send confirmation email
+// Send confirmation email with qualification summary
 async function sendConfirmationEmail(booking) {
     try {
+        const qualificationSummary = booking.qualificationData ? 
+            Object.entries(booking.qualificationData)
+                .map(([key, value]) => `<strong>${key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}:</strong> ${value}`)
+                .join('<br>') : 
+            'No qualification data provided';
+
+        const meetLinkSection = booking.meetLink ? 
+            `<div style="background: #e1f5fe; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #2196f3;">
+                <h4 style="color: #1976d2; margin: 0 0 10px 0;">🎥 Join the Meeting</h4>
+                <p style="margin: 0;"><strong>Google Meet Link:</strong> <a href="${booking.meetLink}" style="color: #1976d2;">${booking.meetLink}</a></p>
+                <p style="margin: 5px 0 0 0; font-size: 12px; color: #666;">You can also find this link in the calendar invite</p>
+            </div>` :
+            `<div style="background: #e1f5fe; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #2196f3;">
+                <h4 style="color: #1976d2; margin: 0 0 10px 0;">🎥 Meeting Location</h4>
+                <p style="margin: 0;">Google Meet link will be included in your calendar invite</p>
+            </div>`;
+
         const mailOptions = {
             from: process.env.EMAIL_USER,
             to: booking.email,
-            subject: 'Call Booking Confirmation',
+            subject: 'Ecom Growth Discovery Call Confirmation - Google Meet Included',
             html: `
                 <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                    <h2 style="color: #667eea;">Your Call is Confirmed!</h2>
+                    <h2 style="color: #667eea;">Your Discovery Call is Confirmed!</h2>
                     
                     <p>Hi ${booking.name},</p>
                     
-                    <p>Your call has been successfully booked for:</p>
+                    <p>Your Ecom Growth Partnership Discovery Call has been successfully booked for:</p>
                     
                     <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
                         <strong>Date:</strong> ${booking.dateDisplay}<br>
                         <strong>Time:</strong> ${booking.timeDisplay}<br>
-                        <strong>Duration:</strong> 30 minutes
+                        <strong>Duration:</strong> 30 minutes<br>
+                        <strong>Timezone:</strong> ${booking.timezone}
                     </div>
                     
-                    <p>We'll contact you at <strong>${booking.phone}</strong> at the scheduled time.</p>
+                    ${meetLinkSection}
+                    
+                    <p>We'll contact you at <strong>${booking.phone}</strong> at the scheduled time and will also be available via Google Meet.</p>
+                    
+                    <h3 style="color: #667eea; margin-top: 30px;">What We Discussed</h3>
+                    <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 15px 0; font-size: 14px;">
+                        ${qualificationSummary}
+                    </div>
                     
                     <p>If you need to reschedule or cancel, please contact us as soon as possible.</p>
                     
@@ -443,21 +639,21 @@ async function sendConfirmationEmail(booking) {
                     
                     <hr style="margin: 30px 0;">
                     <p style="color: #666; font-size: 12px;">
-                        This appointment has been added to your calendar. Check your email for the calendar invite.
+                        This appointment has been added to your calendar with Google Meet link included. Check your email for the calendar invite.
                     </p>
                 </div>
             `
         };
 
         await transporter.sendMail(mailOptions);
-        console.log('Confirmation email sent successfully');
+        console.log('Confirmation email sent successfully with qualification summary and meet info');
     } catch (error) {
         console.error('Error sending confirmation email:', error);
         // Don't throw error - booking should still succeed even if email fails
     }
 }
 
-// Get all bookings (admin endpoint)
+// Get all bookings with qualification data (admin endpoint)
 app.get('/api/bookings', (req, res) => {
     res.json({
         success: true,
@@ -468,6 +664,10 @@ app.get('/api/bookings', (req, res) => {
             phone: booking.phone,
             date: booking.dateDisplay,
             time: booking.timeDisplay,
+            timezone: booking.timezone,
+            meetLink: booking.meetLink,
+            qualificationData: booking.qualificationData,
+            googleEventId: booking.googleEventId,
             createdAt: booking.createdAt
         }))
     });
