@@ -119,7 +119,7 @@ function formatQualificationData(qualificationData) {
         'getting-started': 'We\'re just getting started with paid ads and we\'re already overwhelmed by all of the conflicting advice from agencies and consultants'
     };
 
-    let formattedData = '\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n📋 PROSPECT QUALIFICATION DETAILS\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n';
+    let formattedData = '\n BUSINESS DETAILS:\n';
 
     Object.entries(qualificationData).forEach(([key, value]) => {
         if (value && fieldLabels[key]) {
@@ -327,37 +327,29 @@ app.post('/api/book', async (req, res) => {
         const event = {
             summary: `Ecom Growth Discovery Call - ${name}`,
             description: `
-🎯 ECOM GROWTH PARTNERSHIP DISCOVERY CALL
+ECOM GROWTH PARTNERSHIP DISCOVERY CALL
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-👤 CONTACT INFORMATION
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CONTACT INFORMATION:
 
-📧 Email: ${email}
-📞 Phone: ${phone}
-🌍 Timezone: ${clientTimezone}
-📅 Booked via: Calendar System
+Email: ${email}
+Phone: ${phone}
+Timezone: ${clientTimezone}
+Booked via: Calendar System
+
 ${qualificationDetails}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🎥 MEETING DETAILS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-📱 Google Meet link will be automatically added to this event
-⏰ Duration: 30 minutes
-🔔 You'll receive reminder notifications
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📝 CALL NOTES SECTION
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-[Add your call notes here]
 
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-⚡ NEXT STEPS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MEETING DETAILS:
 
-[Add next steps here]
+Google Meet link will be automatically added to this event
+Duration: 30 minutes
+You'll receive reminder notifications
+
+
+CALL NOTES:
+
+Please add any other detailed information about your brand and golas youd like to go over on the call here!
+
             `,
             start: {
                 dateTime: appointmentTime.toISOString(),
@@ -466,7 +458,7 @@ async function tagShopifyCustomer(email, name, phone, qualificationData = {}) {
         let customer;
         
         // Create tags based on qualification data
-        const tags = ['call-booked'];
+        const tags = ['calendar-booking'];
         
         if (qualificationData.current_revenue) {
             tags.push(`revenue-${qualificationData.current_revenue}`);
@@ -484,8 +476,21 @@ async function tagShopifyCustomer(email, name, phone, qualificationData = {}) {
             tags.push(`channel-${qualificationData.channels}`);
         }
         
+        // Marketing consent objects for email and SMS
+        const emailMarketingConsent = {
+            state: 'subscribed',
+            opt_in_level: 'confirmed_opt_in',
+            consent_updated_at: new Date().toISOString()
+        };
+        
+        const smsMarketingConsent = {
+            state: 'subscribed',
+            opt_in_level: 'confirmed_opt_in',
+            consent_updated_at: new Date().toISOString()
+        };
+        
         if (searchResponse.data.customers && searchResponse.data.customers.length > 0) {
-            // Customer exists, update tags and metafields
+            // Customer exists, update tags, marketing consent, and metafields
             customer = searchResponse.data.customers[0];
             const currentTags = customer.tags ? customer.tags.split(', ') : [];
             
@@ -516,6 +521,8 @@ async function tagShopifyCustomer(email, name, phone, qualificationData = {}) {
                     customer: {
                         id: customer.id,
                         tags: currentTags.join(', '),
+                        email_marketing_consent: emailMarketingConsent,
+                        sms_marketing_consent: smsMarketingConsent,
                         metafields: metafields
                     }
                 },
@@ -526,8 +533,10 @@ async function tagShopifyCustomer(email, name, phone, qualificationData = {}) {
                     }
                 }
             );
+            
+            console.log(`Updated existing customer: ${email} with marketing subscriptions and calendar-booking tag`);
         } else {
-            // Create new customer with qualification data
+            // Create new customer with qualification data and marketing subscriptions
             const metafields = [
                 {
                     namespace: 'booking',
@@ -562,6 +571,10 @@ async function tagShopifyCustomer(email, name, phone, qualificationData = {}) {
                     last_name: name.split(' ').slice(1).join(' '),
                     phone: phone,
                     tags: tags.join(', '),
+                    email_marketing_consent: emailMarketingConsent,
+                    sms_marketing_consent: smsMarketingConsent,
+                    accepts_marketing: true, // Legacy field for email marketing
+                    accepts_marketing_updated_at: new Date().toISOString(),
                     metafields: metafields
                 }
             };
@@ -576,12 +589,14 @@ async function tagShopifyCustomer(email, name, phone, qualificationData = {}) {
                     }
                 }
             );
+            
+            console.log(`Created new customer: ${email} with marketing subscriptions and calendar-booking tag`);
         }
 
-        console.log('Successfully tagged customer in Shopify with qualification data');
+        console.log('Successfully processed customer in Shopify with marketing subscriptions');
     } catch (error) {
-        console.error('Error tagging Shopify customer:', error.response?.data || error.message);
-        // Don't throw error - booking should still succeed even if Shopify tagging fails
+        console.error('Error processing Shopify customer:', error.response?.data || error.message);
+        // Don't throw error - booking should still succeed even if Shopify processing fails
     }
 }
 
