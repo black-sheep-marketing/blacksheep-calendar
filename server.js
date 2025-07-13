@@ -348,7 +348,7 @@ You'll receive reminder notifications
 
 CALL NOTES:
 
-Please add any other detailed information about your brand and golas youd like to go over on the call here!
+Please add any other detailed information about your brand and goals youd like to go over on the call here!
 
             `,
             start: {
