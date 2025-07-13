@@ -60,6 +60,7 @@ app.get('/api/availability', async (req, res) => {
         const endDate = new Date(year, parseInt(month) + 1, 0);
         
         // Get existing events from Google Calendar
+        console.log(`Fetching calendar events for ${CONFIG.CALENDAR_ID} from ${startDate.toISOString()} to ${endDate.toISOString()}`);
         const response = await calendar.events.list({
             calendarId: CONFIG.CALENDAR_ID,
             timeMin: startDate.toISOString(),
@@ -69,23 +70,67 @@ app.get('/api/availability', async (req, res) => {
         });
 
         const events = response.data.items || [];
+        console.log(`Found ${events.length} existing events for ${year}-${month}`);
         const bookedSlots = new Set();
 
         // Process existing events
         events.forEach(event => {
+            console.log('Processing event:', {
+                summary: event.summary,
+                start: event.start,
+                end: event.end
+            });
+
+            let eventStart, eventEnd;
+
+            // Handle both timed events and all-day events
             if (event.start && event.start.dateTime) {
-                const startTime = new Date(event.start.dateTime);
-                const date = startTime.toDateString();
-                const hour = startTime.getHours();
-                const minute = startTime.getMinutes();
-                const slotKey = `${date}_${hour}_${minute}`;
-                bookedSlots.add(slotKey);
+                // Timed event
+                eventStart = new Date(event.start.dateTime);
+                eventEnd = new Date(event.end.dateTime);
+            } else if (event.start && event.start.date) {
+                // All-day event
+                eventStart = new Date(event.start.date + 'T00:00:00');
+                eventEnd = new Date(event.end.date + 'T00:00:00');
                 
-                // Add cooldown slot
-                const cooldownTime = new Date(startTime.getTime() + (CONFIG.COOLDOWN_MINUTES * 60 * 1000));
-                const cooldownSlotKey = `${cooldownTime.toDateString()}_${cooldownTime.getHours()}_${cooldownTime.getMinutes()}`;
-                bookedSlots.add(cooldownSlotKey);
+                // Block entire day for all-day events
+                for (let hour = CONFIG.WORKING_HOURS.start; hour < CONFIG.WORKING_HOURS.end; hour++) {
+                    for (let minute of [0, 30]) {
+                        const slotKey = `${eventStart.toDateString()}_${hour}_${minute}`;
+                        bookedSlots.add(slotKey);
+                        console.log('Blocking all-day slot:', slotKey);
+                    }
+                }
+                return; // Skip the rest for all-day events
+            } else {
+                return; // Skip events without proper time data
             }
+
+            // For timed events, block the specific time slots
+            const eventDuration = eventEnd.getTime() - eventStart.getTime();
+            const slotsToBlock = Math.ceil(eventDuration / (30 * 60 * 1000)); // 30-minute slots
+
+            for (let i = 0; i < slotsToBlock; i++) {
+                const slotTime = new Date(eventStart.getTime() + (i * 30 * 60 * 1000));
+                const date = slotTime.toDateString();
+                const hour = slotTime.getHours();
+                const minute = slotTime.getMinutes();
+                
+                // Round to nearest 30-minute slot
+                const roundedMinute = minute < 30 ? 0 : 30;
+                const slotKey = `${date}_${hour}_${roundedMinute}`;
+                bookedSlots.add(slotKey);
+                console.log('Blocking timed slot:', slotKey);
+            }
+            
+            // Add cooldown slot
+            const cooldownTime = new Date(eventEnd.getTime() + (CONFIG.COOLDOWN_MINUTES * 60 * 1000));
+            const cooldownDate = cooldownTime.toDateString();
+            const cooldownHour = cooldownTime.getHours();
+            const cooldownMinute = cooldownTime.getMinutes() < 30 ? 0 : 30;
+            const cooldownSlotKey = `${cooldownDate}_${cooldownHour}_${cooldownMinute}`;
+            bookedSlots.add(cooldownSlotKey);
+            console.log('Adding cooldown slot:', cooldownSlotKey);
         });
 
         res.json({
